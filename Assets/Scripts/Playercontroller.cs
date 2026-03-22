@@ -604,7 +604,12 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         _suppressSwingLateral = wasSwingingLateral;
         _suppressionTimer = 0f;
     }
-
+    public void ForceUngrounded()
+    {
+        _isGrounded = false;
+        _currentGround = null;
+        transform.SetParent(null);
+    }
     #endregion
 
     #region Gizmos

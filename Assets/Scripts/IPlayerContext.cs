@@ -69,5 +69,6 @@ public interface IPlayerContext
     /// Evita que el input cancele la inercia del swing al soltarse.
     void CaptureSwingInputSnapshot(Vector2 rawInput, bool wasSwingingDown, bool wasSwingingUp, bool wasSwingingLateral);
 
+    void ForceUngrounded();
     #endregion
 }

@@ -160,6 +160,7 @@ public class PlayerPhysicsController : MonoBehaviour
         _input.jumpButtonInput = false;
 
         ((PlayerController)_player).TemporarilyDisableGroundCheck(GROUNDED_CHECK_DELAY);
+        _player.ForceUngrounded();
     }
 
     private void PerformDoubleJump()
