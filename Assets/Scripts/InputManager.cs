@@ -3,8 +3,20 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.OnScreen;
 using UnityEngine.UI;
 
+public enum InputDeviceType
+{
+    None,
+    KeyboardMouse,
+    Gamepad
+}
+
 public class InputManager : MonoBehaviour
 {
+
+    public InputDeviceType selectedInputDevice = InputDeviceType.None;
+
+    private InputAction detectAnyInput;
+
     public static InputManager Instance { get; private set; }
     [SerializeField] public bool displayMobileControls;
 
@@ -86,6 +98,11 @@ public class InputManager : MonoBehaviour
         jumpAction = inputActions.FindAction("Jump");
         actionAction = inputActions.FindAction("Action");
         shoulderSwapAction = inputActions.FindAction("ShoulderSwap");
+
+        detectAnyInput = new InputAction("DetectAnyInput", InputActionType.Button);
+        detectAnyInput.AddBinding("<Keyboard>/anyKey");
+        detectAnyInput.AddBinding("<Pointer>/press");
+        detectAnyInput.AddBinding("<Gamepad>/*");
 
         // UI persistente
         if (!displayMobileControls)
@@ -190,6 +207,7 @@ public class InputManager : MonoBehaviour
 
     void OnEnable()
     {
+        
         inputActions.Enable();
         moveAction.Enable();
         cameraAction.Enable();
@@ -197,24 +215,53 @@ public class InputManager : MonoBehaviour
         jumpAction.Enable();
         actionAction.Enable();
         shoulderSwapAction.Enable();
+        // Detectar dispositivo activo
+        detectAnyInput = new InputAction("DetectAnyInput", InputActionType.Button);
+        detectAnyInput.AddBinding("<Keyboard>/anyKey");
+        detectAnyInput.AddBinding("<Pointer>/press");
+        detectAnyInput.AddBinding("<Gamepad>/*");
+        if (detectAnyInput != null)
+            {
+                detectAnyInput.performed += OnAnyInput;
+                detectAnyInput.Enable();
+            }
+        
 
     }
 
     void OnDisable()
     {
+        if (detectAnyInput != null)
+        {
+            detectAnyInput.performed -= OnAnyInput;
+            detectAnyInput.Disable();
+        }
+
         if (moveAction != null) moveAction.Disable();
         if (cameraAction != null) cameraAction.Disable();
         if (startAction != null) startAction.Disable();
         if (jumpAction != null) jumpAction.Disable();
         if (actionAction != null) actionAction.Disable();
-        if (inputActions != null) inputActions.Disable();
         if (shoulderSwapAction != null) shoulderSwapAction.Disable();
+        if (inputActions != null) inputActions.Disable();
 
     }
 
     // ???????????????????????????????????????????????????????????????????????????
     // Update
     // ???????????????????????????????????????????????????????????????????????????
+    private void OnAnyInput(InputAction.CallbackContext context)
+    {
+        InputDeviceType newDevice = context.control.device is Gamepad
+            ? InputDeviceType.Gamepad
+            : InputDeviceType.KeyboardMouse;
+
+        if (selectedInputDevice == newDevice)
+            return;
+
+        selectedInputDevice = newDevice;
+        Debug.Log("Input device changed to: " + selectedInputDevice);
+    }
 
     void Update()
     {
@@ -223,7 +270,7 @@ public class InputManager : MonoBehaviour
 
     void ProcessInputs()
     {
-        if (GameManager.Instance.selectedInputDevice == InputDeviceType.None)
+        if (selectedInputDevice == InputDeviceType.None)
             return;
 
         // Move
