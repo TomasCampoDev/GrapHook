@@ -90,7 +90,8 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
     private bool _detectionEnabled = true;
     private bool _jumpBufferedDuringLerp;
     private bool _dropBufferedDuringLerp;
-
+    public LedgeAnchor _previousLedgeFromLeft;
+    public LedgeAnchor _previousLedgeFromRight;
     #endregion
 
     #region Initialization
@@ -363,6 +364,8 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
             StopLateralMovement();
             return;
         }
+       // if (movingRight) _previousLedgeFromRight= null;
+       // if (movingLeft) _previousLedgeFromLeft = null;
 
         MoveLaterallyAlongLedge(movingRight, movingLeft);
         ApplyPositionOnLedge();
@@ -391,6 +394,7 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
 
         if (movingRight)
         {
+            
             _currentNormalizedT += deltaT;
             _player.Animator.SetMoveSidewaysRight(true);
             _player.Animator.SetMoveSidewaysLeft(false);
@@ -417,8 +421,9 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         if (movingRight && _currentNormalizedT >= 1f)
         {
             LedgeAnchor nextLedge = _currentLedge.NextRight;
-            if (nextLedge != null)
+            if (nextLedge != null )
             {
+                _previousLedgeFromLeft = _currentLedge;
                 TransitionToAdjacentLedge(nextLedge);
                 return true;
             }
@@ -426,8 +431,9 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         else if (!movingRight && _currentNormalizedT <= 0f)
         {
             LedgeAnchor nextLedge = _currentLedge.NextLeft;
-            if (nextLedge != null)
+            if (nextLedge != null )
             {
+                _previousLedgeFromRight = _currentLedge;
                 TransitionToAdjacentLedge(nextLedge);
                 return true;
             }
