@@ -16,6 +16,7 @@ public interface IPlayerContext
 
     bool IsGrounded { get; }
     bool IsOnLedge { get; }
+    bool IsLerpingToLedge { get; }
     bool IsHookActive { get; }
     bool IsAiming { get; }
 
@@ -27,7 +28,6 @@ public interface IPlayerContext
 
     /// Posición de los ojos del personaje (para raycasts de apuntado).
     Vector3 EyePosition { get; }
-
     Vector3 CameraForward { get; }
 
     #endregion
@@ -45,6 +45,10 @@ public interface IPlayerContext
 
     /// El LedgeGrabController notifica cuándo el personaje está en un saliente.
     void SetOnLedge(bool onLedge);
+
+    /// El LedgeGrabController notifica cuándo está en medio del lerp de agarre,
+    /// para que la gravedad quede suspendida durante el trayecto.
+    void SetLerpingToLedge(bool lerping);
 
     /// El PhysicsController escribe la velocidad vertical para que el PlayerController
     /// la aplique en su Move final.
@@ -66,9 +70,9 @@ public interface IPlayerContext
     /// Llamado por GrapplingHookController al soltar el gancho.
     /// Registra qué input raw estaba activo y en qué eje se estaba swingando,
     /// para suprimir ese input mientras el jugador siga pulsándolo.
-    /// Evita que el input cancele la inercia del swing al soltarse.
     void CaptureSwingInputSnapshot(Vector2 rawInput, bool wasSwingingDown, bool wasSwingingUp, bool wasSwingingLateral);
 
     void ForceUngrounded();
+
     #endregion
 }

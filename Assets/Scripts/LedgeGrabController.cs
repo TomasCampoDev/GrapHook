@@ -182,6 +182,7 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
     {
         isLerpingToLedge = true;
 
+        _player.SetLerpingToLedge(true);
         _player.SetMovementBlocked(true);
         _player.SetRotationBlocked(true);
         _player.SetVerticalVelocity(0f);
@@ -204,17 +205,25 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         Quaternion startRotation = transform.rotation;
         float progress = 0f;
 
+        _player.CharacterController.enabled = false;
+
         while (progress < 1f)
         {
             progress += Time.deltaTime * snapLerpSpeed;
+            float t = Mathf.Clamp01(progress);
 
-            transform.position = Vector3.Lerp(startPosition, target.WorldPosition, progress);
-            transform.rotation = Quaternion.Slerp(startRotation, target.Rotation, progress);
+            transform.position = Vector3.Lerp(startPosition, target.WorldPosition, t);
+            transform.rotation = Quaternion.Slerp(startRotation, target.Rotation, t);
 
             CaptureInputBufferDuringLerp();
 
             yield return null;
         }
+
+        transform.position = target.WorldPosition;
+        transform.rotation = target.Rotation;
+
+        _player.CharacterController.enabled = true;
     }
 
     private void CaptureInputBufferDuringLerp()
@@ -239,6 +248,7 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         isLerpingToLedge = false;
         isGrabbingLedge = true;
 
+        _player.SetLerpingToLedge(false);
         _player.SetOnLedge(true);
         _player.SetVerticalVelocity(0f);
         _player.Animator.SetOnLedge(true);
@@ -282,7 +292,6 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         }
     }
 
-    /// Decide qué hacer con el salto según si el ledge es trepable o no.
     private void HandleJumpInputOnLedge()
     {
         if (_currentLedge != null && _currentLedge.IsClimbable)
@@ -295,13 +304,11 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
 
     #region Climb
 
-    /// Mueve al personaje hacia adelante y arriba hasta el punto de aterrizaje,
-    /// luego libera el estado de ledge.
     private IEnumerator ExecuteClimbCoroutine()
     {
         isClimbing = true;
-
         _player.Animator.SetClimbLedge(true);
+        _player.CharacterController.enabled = false;
 
         Vector3 climbDestination = CalculateClimbDestination();
 
@@ -317,12 +324,13 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         }
 
         transform.position = climbDestination;
+        _player.CharacterController.enabled = true;
 
         FinishClimb();
     }
 
-    /// El destino del climb: adelante en transform.forward y arriba en transform.up.
-    /// El personaje mira hacia la pared, así que forward apunta hacia la pared
+    /// Destino del climb: adelante y arriba desde la posición colgada.
+    /// El personaje mira hacia la pared, por lo que forward apunta hacia ella
     /// y el personaje sube por encima del borde.
     public Vector3 CalculateClimbDestination()
     {
@@ -364,8 +372,10 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
     private void ExitLedgeState()
     {
         isGrabbingLedge = false;
+        isLerpingToLedge = false;
         _currentLedge = null;
 
+        _player.SetLerpingToLedge(false);
         _player.SetOnLedge(false);
         _player.SetMovementBlocked(false);
         _player.SetRotationBlocked(false);
@@ -396,6 +406,8 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         _currentNormalizedT = Mathf.Clamp01(normalizedT);
     }
 
+    public Vector3 GetSnapOffsetForPreview() => characterSnapOffset;
+
     #endregion
 
     #region Private Data Structures
@@ -413,6 +425,6 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
             NormalizedT = normalizedT;
         }
     }
-    public Vector3 GetSnapOffsetForPreview() => characterSnapOffset;
+
     #endregion
 }

@@ -5,7 +5,7 @@ using UnityEngine;
 /// Orquestador principal del personaje.
 /// Responsabilidades: movimiento en suelo, rotación, cámara de hombro y estado compartido (IPlayerContext).
 /// La física/salto vive en PlayerPhysicsController.
-/// El ledge vive en PlayerLedgeGrabController.
+/// El ledge vive en LedgeGrabController.
 /// El grappling hook vive en GrapplingHookController.
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
@@ -113,6 +113,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
     private float _verticalVelocity;
     private bool _isAiming;
     private bool _isOnLedge;
+    private bool _isLerpingToLedge;
     private bool _isHookActive;
     private Vector3 _receivedInertia;
     private bool _isGrounded;
@@ -124,26 +125,14 @@ public class PlayerController : MonoBehaviour, IPlayerContext
     #region Serialized — Swing Input Suppression Recovery
 
     [Header("Swing Input Suppression — Recovery")]
-    [Tooltip("Si está activo, la supresión de input se cancela en cuanto el personaje toca el suelo, " +
-             "aunque el jugador siga pulsando. Ideal para que el aterrizaje se sienta natural.")]
     [SerializeField] private bool recoverSuppressionOnGrounded = true;
-
-    [Tooltip("Si está activo, la supresión de input se cancela tras el tiempo indicado, " +
-             "aunque el jugador no haya soltado el eje. Evita que la supresión dure indefinidamente.")]
     [SerializeField] private bool recoverSuppressionAfterTimeout = true;
-
-    [Tooltip("Tiempo en segundos hasta que la supresión de input se cancela automáticamente.")]
     [SerializeField] private float suppressionTimeoutDuration = 0.5f;
 
     #endregion
 
     #region Private — Swing Input Suppression
 
-    // Input raw capturado en el momento de soltar el gancho, por eje.
-    // Mientras el jugador siga pulsando ese mismo eje con el mismo signo,
-    // el movement input se trata como cero para no cancelar la inercia del swing.
-    // Se limpia automáticamente cuando el jugador suelta los ejes implicados,
-    // o al cumplirse las condiciones de recuperación configuradas más abajo.
     private Vector2 _suppressedSwingInput;
     private bool _suppressSwingDown;
     private bool _suppressSwingUp;
@@ -229,11 +218,6 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         MoveCharacter(GetMovementDirection(inputDirection));
     }
 
-    /// Devuelve el input de movimiento filtrado por la supresión de swing.
-    /// Si el jugador sigue pulsando el eje que tenía al soltarse del gancho,
-    /// ese eje se devuelve como 0 para no cancelar la inercia.
-    /// La supresión se limpia al soltar el eje, al tocar suelo (si está activado)
-    /// o al superar el timeout configurado (si está activado).
     private Vector2 GetMovementInputWithSwingSuppression()
     {
         if (!HasActiveSwingSuppression())
@@ -253,7 +237,6 @@ public class PlayerController : MonoBehaviour, IPlayerContext
     private bool HasActiveSwingSuppression()
         => _suppressSwingDown || _suppressSwingUp || _suppressSwingLateral;
 
-    /// Avanza el timer de supresión y limpia todo si se supera el timeout configurado.
     private void TickSuppressionTimer()
     {
         if (!recoverSuppressionAfterTimeout)
@@ -265,7 +248,6 @@ public class PlayerController : MonoBehaviour, IPlayerContext
             ClearAllSwingSuppression();
     }
 
-    /// Evalúa todas las condiciones de recuperación y limpia las flags que correspondan.
     private void ClearSwingSuppressionIfRecoveryConditionMet(Vector2 currentInput)
     {
         if (recoverSuppressionOnGrounded && _isGrounded)
@@ -277,13 +259,10 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         ClearSwingSuppressionIfInputReleased(currentInput);
     }
 
-    /// Limpia cada flag de supresión en cuanto el jugador suelta el eje correspondiente.
-    /// Para teclado: el eje baja a 0. Para stick analógico: el signo cambia o baja de threshold.
     private void ClearSwingSuppressionIfInputReleased(Vector2 currentInput)
     {
         bool verticalReleased = Mathf.Abs(currentInput.y) < INPUT_THRESHOLD;
         bool lateralReleased = Mathf.Abs(currentInput.x) < INPUT_THRESHOLD;
-
         bool verticalSignChanged = currentInput.y * _suppressedSwingInput.y < 0f;
         bool lateralSignChanged = currentInput.x * _suppressedSwingInput.x < 0f;
 
@@ -292,8 +271,6 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         if (_suppressSwingLateral && (lateralReleased || lateralSignChanged)) _suppressSwingLateral = false;
     }
 
-    /// Cancela toda la supresión de swing de golpe.
-    /// Usado por las condiciones de recuperación (grounded, timeout).
     private void ClearAllSwingSuppression()
     {
         _suppressSwingDown = false;
@@ -303,7 +280,6 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         _suppressionTimer = 0f;
     }
 
-    /// Construye el input final aplicando las supresiones activas eje a eje.
     private Vector2 BuildSuppressedInput(Vector2 raw)
     {
         float x = _suppressSwingLateral ? 0f : raw.x;
@@ -333,8 +309,6 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         transform.rotation = Quaternion.Euler(0f, smoothAngle, 0f);
     }
 
-    /// Fuerza la rotación hacia un ángulo Y con lerp suave.
-    /// Usado por GrapplingHookController al disparar.
     public void RotateTowardsAngle(float targetYAngle)
     {
         float smoothAngle = Mathf.SmoothDampAngle(
@@ -370,7 +344,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     private void ApplyVerticalVelocity()
     {
-        if (_isOnLedge || _isHookActive)
+        if (_isOnLedge || _isLerpingToLedge || _isHookActive)
             return;
 
         _characterController.Move(Vector3.up * _verticalVelocity * Time.deltaTime);
@@ -378,7 +352,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     private void ApplyInertia()
     {
-        if (_isHookActive || _isGrounded)
+        if (_isHookActive || _isGrounded || _isOnLedge || _isLerpingToLedge)
         {
             _receivedInertia = Vector3.zero;
             return;
@@ -400,9 +374,11 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         if (!_canCheckGrounded)
             return;
 
-        Vector3 spherePos = new Vector3(transform.position.x,
-                                        transform.position.y - groundedOffset,
-                                        transform.position.z);
+        Vector3 spherePos = new Vector3(
+            transform.position.x,
+            transform.position.y - groundedOffset,
+            transform.position.z
+        );
 
         Collider[] hits = Physics.OverlapSphere(spherePos, groundedRadius, ~0, QueryTriggerInteraction.Ignore);
 
@@ -532,28 +508,22 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         Vector3 cameraRight = cameraRotation * Vector3.right;
         Vector3 cameraForward = cameraRotation * Vector3.forward;
 
-        // La cámara se desplaza lateralmente
-        Vector3 lateralOffset = cameraRight * _currentShoulderOffset;
+        Vector3 characterCenter = transform.position + Vector3.up * _currentHeightOffset;
+        Vector3 lookTarget = characterCenter + cameraRight * (_currentShoulderOffset * 0.35f);
 
-        // El lookTarget se desplaza en dirección OPUESTA para que el personaje
-        // quede al lado en pantalla en lugar de al centro
-        Vector3 lookTarget = transform.position
-                           + Vector3.up * _currentHeightOffset
-                           - lateralOffset;
-
-        Vector3 desiredPos = lookTarget
+        Vector3 desiredPos = characterCenter
                            - cameraForward * _currentCameraDistance
-                           + lateralOffset;
+                           + cameraRight * _currentShoulderOffset;
 
-        bool isTransitioning = Mathf.Abs(_currentCameraDistance - (_isAiming ? aimCameraDistance : cameraDistance)) > 0.01f
-                            || Mathf.Abs(_currentShoulderOffset - (_isAiming ? shoulderOffset : 0f)) > 0.01f
-                            || Mathf.Abs(_currentHeightOffset - (_isAiming ? aimHeightOffset : cameraHeightOffset)) > 0.01f;
+        mainCamera.transform.position = Vector3.Lerp(
+            mainCamera.transform.position,
+            desiredPos,
+            Time.deltaTime * cameraFollowSpeed
+        );
 
-        mainCamera.transform.position = isTransitioning
-            ? Vector3.Lerp(mainCamera.transform.position, desiredPos, Time.deltaTime * cameraFollowSpeed)
-            : desiredPos;
-
-        mainCamera.transform.rotation = Quaternion.LookRotation(lookTarget - mainCamera.transform.position);
+        mainCamera.transform.rotation = Quaternion.LookRotation(
+            lookTarget - mainCamera.transform.position
+        );
     }
 
     #endregion
@@ -575,6 +545,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
     public float VerticalVelocity => _verticalVelocity;
     public bool IsGrounded => _isGrounded;
     public bool IsOnLedge => _isOnLedge;
+    public bool IsLerpingToLedge => _isLerpingToLedge;
     public bool IsHookActive => _isHookActive;
     public bool IsAiming => _isAiming;
     public Camera MainCamera => mainCamera;
@@ -589,7 +560,16 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         _currentGround = ground;
     }
 
-    public void SetOnLedge(bool onLedge) => _isOnLedge = onLedge;
+    public void SetOnLedge(bool onLedge)
+    {
+        _isOnLedge = onLedge;
+
+        if (onLedge && _hookController != null && _hookController.hookIsActive)
+            _hookController.ForceRelease();
+    }
+
+    public void SetLerpingToLedge(bool lerping) => _isLerpingToLedge = lerping;
+
     public void SetVerticalVelocity(float velocity) => _verticalVelocity = velocity;
     public void SetMovementBlocked(bool blocked) => _movementBlocked = blocked;
     public void SetRotationBlocked(bool blocked) => _rotationBlocked = blocked;
@@ -604,12 +584,14 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         _suppressSwingLateral = wasSwingingLateral;
         _suppressionTimer = 0f;
     }
+
     public void ForceUngrounded()
     {
         _isGrounded = false;
         _currentGround = null;
         transform.SetParent(null);
     }
+
     #endregion
 
     #region Gizmos
@@ -617,9 +599,11 @@ public class PlayerController : MonoBehaviour, IPlayerContext
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = _isGrounded ? Color.green : Color.red;
-        Vector3 spherePos = new Vector3(transform.position.x,
-                                        transform.position.y - groundedOffset,
-                                        transform.position.z);
+        Vector3 spherePos = new Vector3(
+            transform.position.x,
+            transform.position.y - groundedOffset,
+            transform.position.z
+        );
         Gizmos.DrawWireSphere(spherePos, groundedRadius);
     }
 

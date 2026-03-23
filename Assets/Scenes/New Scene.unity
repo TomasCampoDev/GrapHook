@@ -948,7 +948,7 @@ Transform:
   m_GameObject: {fileID: 1193510788}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0.1, y: 0.227, z: -0.537}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -992,8 +992,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 0.28086615, z: 0.363559}
-  m_Center: {x: 0, y: 0.35956693, z: -0.50567174}
+  m_Size: {x: 1, y: 0.08758354, z: 0.19840086}
+  m_Center: {x: 0, y: 0.26292562, z: -0.0038903356}
 --- !u!1 &1220808174
 GameObject:
   m_ObjectHideFlags: 0
@@ -4146,7 +4146,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3956459402667197162}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 612ff4715578e5f4fb0e97b85e6fc284, type: 3}
   m_Name: 
@@ -4169,7 +4169,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3956459402667197162}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fa61d9b33c935164aa5601ddadf2fc0b, type: 3}
   m_Name: 
@@ -4221,12 +4221,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LedgeGrabController
   characterSnapOffset: {x: 0, y: -1.54, z: -0.4}
   snapLerpSpeed: 4.5
+  climbForwardOffset: 0.3
+  climbUpOffset: 1.5
+  climbMoveSpeed: 4
   jumpHeightFromLedge: 2
   gravityForJumpCalculation: -25
   ledgeDetectionCooldown: 0.25
   groundCheckDisableDuration: 0.2
+  detectionCollider: {fileID: 0}
   isGrabbingLedge: 0
   isLerpingToLedge: 0
+  isClimbing: 0
 --- !u!4 &7768542810622315219
 Transform:
   m_ObjectHideFlags: 0

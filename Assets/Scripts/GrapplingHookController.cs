@@ -368,6 +368,9 @@ public class GrapplingHookController : MonoBehaviour
 
     private void FireHook()
     {
+        if (_player.IsOnLedge)
+            return;
+
         hookIsActive = true;
         hookImpactPoint = _aimRaycastEndPoint;
         currentDistanceToImpact = DistanceFromPlayerToImpact();
@@ -515,6 +518,24 @@ public class GrapplingHookController : MonoBehaviour
             return _player.MainCamera.transform.forward;
         }
     }
+    /// Suelta el gancho limpiamente sin aplicar inercia ni capturar snapshot de input.
+    /// Usado cuando un sistema externo toma el control del personaje (ej: ledge grab).
+    public void ForceRelease()
+    {
+        if (!hookIsActive)
+            return;
+
+        hookIsActive = false;
+        hookImpactPoint = Vector3.zero;
+        _verticalPlaneNormalSet = false;
+        _lastFrameVelocity = Vector3.zero;
+        _currentRetractionSpeed = 0f;
+
+        _player.SetHookActive(false);
+        _player.SetMovementBlocked(false);
+        _player.SetReceivedInertia(Vector3.zero);
+    }
 
     #endregion
+
 }

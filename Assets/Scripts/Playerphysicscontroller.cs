@@ -72,7 +72,7 @@ public class PlayerPhysicsController : MonoBehaviour
 
     private void ApplyGravity()
     {
-        if (_player.IsOnLedge || _player.IsHookActive)
+        if (_player.IsOnLedge || _player.IsHookActive || _player.IsLerpingToLedge)
         {
             _verticalVelocity = 0f;
             _player.SetVerticalVelocity(0f);
