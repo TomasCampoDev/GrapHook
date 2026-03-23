@@ -402,7 +402,47 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
             _player.Animator.SetMoveSidewaysLeft(true);
         }
 
+        if (TryTransitionToAdjacentLedge(movingRight))
+            return;
+
         _currentNormalizedT = Mathf.Clamp01(_currentNormalizedT);
+    }
+
+    /// Comprueba si el jugador ha llegado al extremo del borde en la dirección
+    /// de movimiento y hay un ledge adyacente al que transicionar.
+    /// Devuelve true si se inició la transición, false si no hay vecino.
+    private bool TryTransitionToAdjacentLedge(bool movingRight)
+    {
+        if (isLookingBack) return false;
+        if (movingRight && _currentNormalizedT >= 1f)
+        {
+            LedgeAnchor nextLedge = _currentLedge.NextRight;
+            if (nextLedge != null)
+            {
+                TransitionToAdjacentLedge(nextLedge);
+                return true;
+            }
+        }
+        else if (!movingRight && _currentNormalizedT <= 0f)
+        {
+            LedgeAnchor nextLedge = _currentLedge.NextLeft;
+            if (nextLedge != null)
+            {
+                TransitionToAdjacentLedge(nextLedge);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void TransitionToAdjacentLedge(LedgeAnchor targetLedge)
+    {
+        isGrabbingLedge = false;
+        isLookingBack = false;
+        StopLateralMovement();
+        _player.SetOnLedge(false);
+        StartCoroutine(LerpToLedgeCoroutine(targetLedge));
     }
 
     private void ApplyPositionOnLedge()
