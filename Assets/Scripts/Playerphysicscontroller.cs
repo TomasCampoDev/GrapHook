@@ -72,13 +72,17 @@ public class PlayerPhysicsController : MonoBehaviour
 
     private void ApplyGravity()
     {
+        // Sincroniza la velocidad interna con la externa por si un módulo
+        // externo (ledge, hook) la modificó directamente en el frame anterior.
+        if (!_player.IsOnLedge && !_player.IsHookActive && !_player.IsLerpingToLedge)
+            _verticalVelocity = _player.VerticalVelocity;
+
         if (_player.IsOnLedge || _player.IsHookActive || _player.IsLerpingToLedge)
         {
             _verticalVelocity = 0f;
             _player.SetVerticalVelocity(0f);
             return;
         }
-
         if (_player.IsGrounded)
         {
             if (_verticalVelocity < 0f)

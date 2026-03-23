@@ -1,16 +1,17 @@
-using System.Collections;
+ï»¿using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// Módulo encargado de toda la lógica de ledge grab del personaje:
-/// detección, lerp de entrada, estado colgado, climb y salidas (salto y drop).
+/// MÃ³dulo encargado de toda la lÃ³gica de ledge grab del personaje:
+/// detecciÃ³n, lerp de entrada, movimiento lateral, looking back, climb y salidas.
 ///
-/// Espacio ? sube si IsClimbable, salta hacia atrás si no.
-/// F (actionButton) ? suelta el ledge.
+/// Espacio â†’ sube si IsClimbable, salta hacia atrÃ¡s si no.
+/// F (actionButton) â†’ suelta el ledge.
+/// Input lateral â†’ se mueve a lo largo del borde (de LeftEdge a RightEdge).
+/// Input hacia atrÃ¡s â†’ activa LookingBack, bloquea movimiento lateral.
 ///
-/// Crea automáticamente un CapsuleCollider hijo para la detección si no existe.
-/// Sigue el mismo patrón que PlayerPhysicsController:
-///   - Lee y escribe estado a través de IPlayerContext.
+/// Sigue el mismo patrÃ³n que PlayerPhysicsController:
+///   - Lee y escribe estado a travÃ©s de IPlayerContext.
 ///   - No referencia PlayerController directamente salvo para TemporarilyDisableGroundCheck.
 /// </summary>
 public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
@@ -19,16 +20,28 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
 
     [Header("Snap Offset")]
     [Tooltip("Offset en espacio local del ledge para posicionar al personaje. " +
-             "Ajusta Y y Z para que encaje con la animación de colgarse.")]
+             "Ajusta Y y Z para que encaje con la animaciÃ³n de colgarse.")]
     [SerializeField] private Vector3 characterSnapOffset = new Vector3(0f, -1.54f, -0.4f);
 
     [Header("Lerp")]
     [SerializeField] private float snapLerpSpeed = 4.5f;
 
+    [Header("Lateral Movement")]
+    [SerializeField] private float lateralMoveSpeed = 6f;
+    [Tooltip("Ãngulo mÃ¡ximo entre el input y transform.right para considerar que el jugador " +
+             "quiere moverse lateralmente. Por encima de este Ã¡ngulo se ignora el movimiento.")]
+    [SerializeField] private float lateralInputConeAngle = 60f;
+
+    [Header("Looking Back")]
+    [Tooltip("Ãngulo del cono trasero. Si el input apunta dentro de este cono, " +
+             "se activa LookingBack y se bloquea el movimiento lateral.")]
+    [SerializeField] private float lookingBackConeAngle = 80f;
+    [SerializeField] private float lookingBackSideLerpSpeed = 3f;
+
     [Header("Climb")]
-    [Tooltip("Cuánto avanza hacia adelante (transform.forward) al trepar.")]
+    [Tooltip("CuÃ¡nto avanza hacia adelante (transform.forward) al trepar.")]
     [SerializeField] public float climbForwardOffset = 0.3f;
-    [Tooltip("Cuánto sube (transform.up) al trepar.")]
+    [Tooltip("CuÃ¡nto sube (transform.up) al trepar.")]
     [SerializeField] public float climbUpOffset = 1.5f;
     [SerializeField] private float climbMoveSpeed = 4f;
 
@@ -37,22 +50,26 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
     [SerializeField] private float gravityForJumpCalculation = -25f;
 
     [Header("Cooldowns")]
-    [Tooltip("Tiempo mínimo tras soltar un ledge antes de poder agarrarse a otro.")]
+    [Tooltip("Tiempo mÃ­nimo tras soltar un ledge antes de poder agarrarse a otro.")]
     [SerializeField] private float ledgeDetectionCooldown = 0.25f;
     [SerializeField] private float groundCheckDisableDuration = 0.2f;
 
     [Header("Detection Collider")]
-    [Tooltip("Si se deja vacío, se crea automáticamente un hijo con CapsuleCollider.")]
+    [Tooltip("Si se deja vacÃ­o, se crea automÃ¡ticamente un hijo con CapsuleCollider.")]
     public CapsuleCollider detectionCollider;
 
     [Header("Debug - Read Only")]
     [SerializeField] private bool isGrabbingLedge;
     [SerializeField] private bool isLerpingToLedge;
     [SerializeField] private bool isClimbing;
+    [SerializeField] private bool isLookingBack;
+    [SerializeField] private float currentNormalizedTDebug;
+    public float LookingBackConeHalfAngle => lookingBackConeAngle * 0.5f;
+    public float LateralInputConeHalfAngle => lateralInputConeAngle * 0.5f;
 
     #endregion
 
-    #region Constants — Detection Collider Auto-Creation
+    #region Constants â€” Detection Collider Auto-Creation
 
     private const float DetectionCapsuleRadius = 0.6f;
     private const float DetectionCapsuleHeight = 0.6f;
@@ -68,6 +85,7 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
 
     private LedgeAnchor _currentLedge;
     private float _currentNormalizedT;
+    private float _lookingBackSideLerped;
 
     private bool _detectionEnabled = true;
     private bool _jumpBufferedDuringLerp;
@@ -125,7 +143,11 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         if (!isGrabbingLedge || isClimbing)
             return;
 
+        EvaluateLookingBack();
         HandleLedgeExitInput();
+
+        if (!isLookingBack)
+            HandleLateralMovement();
     }
 
     #endregion
@@ -152,7 +174,7 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
 
     #endregion
 
-    #region ILedgeGrabbable — Entry Point
+    #region ILedgeGrabbable â€” Entry Point
 
     public void OnLedgeDetected(LedgeAnchor ledge)
     {
@@ -274,6 +296,142 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
 
     #endregion
 
+    #region Looking Back
+
+    /// EvalÃºa si el input del jugador apunta hacia atrÃ¡s (fuera del cono frontal del ledge).
+    /// Si es asÃ­, activa LookingBack y bloquea el movimiento lateral.
+    private void EvaluateLookingBack()
+    {
+        Vector2 input = InputManager.Instance.movementInput;
+
+        if (input.sqrMagnitude < 0.0001f)
+        {
+            SetLookingBackState(false, 0f);
+            return;
+        }
+
+        Vector3 inputWorldDir = CalculateWorldDirectionFromInput(input);
+        Vector3 ledgeBack = -transform.forward;
+        float halfAngle = lookingBackConeAngle * 0.5f;
+        float dotThreshold = Mathf.Cos(halfAngle * Mathf.Deg2Rad);
+        bool lookingBack = Vector3.Dot(ledgeBack, inputWorldDir) >= dotThreshold;
+
+        float sideValue = 0f;
+        if (lookingBack)
+        {
+            Vector3 ledgeRight = Vector3.Cross(Vector3.up, ledgeBack);
+            sideValue = Mathf.Clamp(Vector3.Dot(inputWorldDir, ledgeRight), -1f, 1f);
+        }
+
+        SetLookingBackState(lookingBack, sideValue);
+    }
+
+    private void SetLookingBackState(bool lookingBack, float sideValue)
+    {
+        isLookingBack = lookingBack;
+
+        _lookingBackSideLerped = Mathf.Lerp(
+            _lookingBackSideLerped,
+            sideValue,
+            Time.deltaTime * lookingBackSideLerpSpeed
+        );
+
+        _player.Animator.SetLookingBack(isLookingBack);
+        _player.Animator.SetLookingBackSide(_lookingBackSideLerped);
+    }
+
+    #endregion
+
+    #region Lateral Movement
+
+    private void HandleLateralMovement()
+    {
+        Vector2 input = InputManager.Instance.movementInput;
+
+        if (input.sqrMagnitude < 0.01f)
+        {
+            StopLateralMovement();
+            return;
+        }
+
+        Vector3 inputWorldDir = CalculateWorldDirectionFromInput(input);
+        bool movingRight = IsMovingTowardsRight(inputWorldDir);
+        bool movingLeft = IsMovingTowardsLeft(inputWorldDir);
+
+        if (!movingRight && !movingLeft)
+        {
+            StopLateralMovement();
+            return;
+        }
+
+        MoveLaterallyAlongLedge(movingRight, movingLeft);
+        ApplyPositionOnLedge();
+
+        currentNormalizedTDebug = _currentNormalizedT;
+    }
+
+    private bool IsMovingTowardsRight(Vector3 inputWorldDir)
+    {
+        return Vector3.Angle(inputWorldDir, transform.right) <= lateralInputConeAngle;
+    }
+
+    private bool IsMovingTowardsLeft(Vector3 inputWorldDir)
+    {
+        return Vector3.Angle(inputWorldDir, -transform.right) <= lateralInputConeAngle;
+    }
+
+    private void MoveLaterallyAlongLedge(bool movingRight, bool movingLeft)
+    {
+        float ledgeLength = _currentLedge.GetLedgeLength();
+
+        if (ledgeLength < Mathf.Epsilon)
+            return;
+
+        float deltaT = (lateralMoveSpeed * Time.deltaTime) / ledgeLength;
+
+        if (movingRight)
+        {
+            _currentNormalizedT += deltaT;
+            _player.Animator.SetMoveSidewaysRight(true);
+            _player.Animator.SetMoveSidewaysLeft(false);
+        }
+        else
+        {
+            _currentNormalizedT -= deltaT;
+            _player.Animator.SetMoveSidewaysRight(false);
+            _player.Animator.SetMoveSidewaysLeft(true);
+        }
+
+        _currentNormalizedT = Mathf.Clamp01(_currentNormalizedT);
+    }
+
+    private void ApplyPositionOnLedge()
+    {
+        Vector3 ledgePoint = _currentLedge.GetWorldPositionAtNormalizedT(_currentNormalizedT);
+        Quaternion hangRotation = _currentLedge.GetCharacterHangRotation();
+
+        transform.position = ledgePoint + hangRotation * characterSnapOffset;
+        transform.rotation = hangRotation;
+    }
+
+    private void StopLateralMovement()
+    {
+        _player.Animator.SetMoveSidewaysRight(false);
+        _player.Animator.SetMoveSidewaysLeft(false);
+    }
+
+    /// Convierte input 2D de pantalla a direcciÃ³n 3D en world space usando la cÃ¡mara.
+    private Vector3 CalculateWorldDirectionFromInput(Vector2 input)
+    {
+        Camera cam = _player.MainCamera;
+        Vector3 camForward = new Vector3(cam.transform.forward.x, 0f, cam.transform.forward.z).normalized;
+        Vector3 camRight = new Vector3(cam.transform.right.x, 0f, cam.transform.right.z).normalized;
+
+        return (camRight * input.x + camForward * input.y).normalized;
+    }
+
+    #endregion
+
     #region Ledge Exit Input
 
     private void HandleLedgeExitInput()
@@ -294,10 +452,22 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
 
     private void HandleJumpInputOnLedge()
     {
-        if (_currentLedge != null && _currentLedge.IsClimbable)
+        if (_currentLedge != null && _currentLedge.IsClimbable && CanClimbFromCurrentInput())
             StartCoroutine(ExecuteClimbCoroutine());
         else
             ExecuteJumpFromLedge();
+    }
+
+    private bool CanClimbFromCurrentInput()
+    {
+        Vector2 input = InputManager.Instance.movementInput;
+
+        if (input.sqrMagnitude < 0.01f)
+            return true;
+
+        return !isLookingBack
+            && !IsMovingTowardsRight(CalculateWorldDirectionFromInput(input))
+            && !IsMovingTowardsLeft(CalculateWorldDirectionFromInput(input));
     }
 
     #endregion
@@ -329,7 +499,7 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
         FinishClimb();
     }
 
-    /// Destino del climb: adelante y arriba desde la posición colgada.
+    /// Destino del climb: adelante y arriba desde la posiciÃ³n colgada.
     /// El personaje mira hacia la pared, por lo que forward apunta hacia ella
     /// y el personaje sube por encima del borde.
     public Vector3 CalculateClimbDestination()
@@ -355,12 +525,19 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
 
     #region Ledge Exit Execution
 
+    [SerializeField] private float lookingBackJumpHeight = 1.5f;
+
     private void ExecuteJumpFromLedge()
     {
-        float jumpVelocity = Mathf.Sqrt(jumpHeightFromLedge * -2f * gravityForJumpCalculation);
         ExitLedgeState();
-        _player.SetVerticalVelocity(jumpVelocity);
+        _player.SetVerticalVelocity(CalculateJumpVelocity());
         _player.Animator.SetJump(true);
+    }
+
+    private float CalculateJumpVelocity()
+    {
+        float height = isLookingBack ? lookingBackJumpHeight : jumpHeightFromLedge;
+        return Mathf.Sqrt(height * -2f * gravityForJumpCalculation);
     }
 
     private void ExecuteDropFromLedge()
@@ -373,6 +550,7 @@ public class LedgeGrabController : MonoBehaviour, ILedgeGrabbable
     {
         isGrabbingLedge = false;
         isLerpingToLedge = false;
+        isLookingBack = false;
         _currentLedge = null;
 
         _player.SetLerpingToLedge(false);
