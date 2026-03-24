@@ -9,6 +9,12 @@ public class GrapplingHookVisualizer : MonoBehaviour
     public Color aimRaycastColorNoTarget = Color.red;
     public Color aimRaycastColorValidHit = Color.green;
 
+    [Header("Aim Assist Rays")]
+    public Color aimAssistRayColor = new Color(0.2f, 0.5f, 1f, 1f);   // azul normal
+    public Color aimAssistRayHitColor = new Color(0.2f, 1f, 0.4f, 0.6f); // verde suave = hit inválido
+    public Color aimAssistRaySelectedColor = Color.cyan;                       // cian = el elegido
+    public float aimAssistHitSphereRadius = 0.08f;
+
     #endregion
 
     #region Serialized — Cable
@@ -67,6 +73,7 @@ public class GrapplingHookVisualizer : MonoBehaviour
             return;
 
         DrawAimRaycast();
+        DrawAimAssistRays();
 
         if (_hook.hookIsActive)
         {
@@ -234,4 +241,41 @@ public class GrapplingHookVisualizer : MonoBehaviour
     }
 
     #endregion
+
+    #region Aim Assist Rays
+
+    private void DrawAimAssistRays()
+    {
+        if (!_hook.aimAssistEnabled)
+            return;
+
+        var assistRays = _hook.lastAimAssistRays;
+        if (assistRays == null || assistRays.Length == 0)
+            return;
+
+        foreach (var ray in assistRays)
+        {
+            if (ray.selected)
+            {
+                Gizmos.color = aimAssistRaySelectedColor;
+                Gizmos.DrawLine(ray.origin, ray.end);
+                Gizmos.DrawWireSphere(ray.end, aimAssistHitSphereRadius * 1.5f);
+            }
+            else if (ray.hitValid)
+            {
+                Gizmos.color = aimAssistRayHitColor;
+                Gizmos.DrawLine(ray.origin, ray.end);
+                Gizmos.DrawWireSphere(ray.end, aimAssistHitSphereRadius);
+            }
+            else
+            {
+                Gizmos.color = aimAssistRayColor;
+                Gizmos.DrawLine(ray.origin, ray.end);
+            }
+        }
+    }
+
+    #endregion
+
+
 }

@@ -33,8 +33,35 @@ public class GrapplingHookController : MonoBehaviour
     public float aimMaxDistance = 30f;
     public LayerMask environmentLayers = ~0;
     public string environmentTag = "Environment";
+    [Header("Impact Point Shower")]
+    public bool showImpactPoint = true;
+    public GameObject impactPointObject;
+    public Vector3 impactPointOffset = Vector3.zero;
 
     #endregion
+    #region Serialized — Aim Assist
+
+    [Header("Aim Assist")]
+    [Tooltip("Activa la búsqueda de objetivos alternativos cuando el centro no apunta a una superficie válida.")]
+    public bool aimAssistEnabled = true;
+    [Tooltip("Número de raycast auxiliares por anillo. Se reparten uniformemente en 360°.")]
+    [Range(4, 32)]
+    public int aimAssistRayCount = 12;
+    [Tooltip("Ángulo máximo en grados desde el centro de la mira hasta el borde del círculo de asistencia.")]
+    [Range(1f, 20f)]
+    public float aimAssistAngle = 8f;
+    [Tooltip("Número de anillos concéntricos de raycast auxiliares (1 = sólo el anillo exterior).")]
+    [Range(1, 4)]
+    public int aimAssistRings = 1;
+
+    [Header("Current Grappled Impact Point")]
+    public bool showCurrentGrappledImpactPoint = true;
+    public GameObject currentGrappledImpactPointObject;
+    public Vector3 currentGrappledImpactPointOffset = Vector3.zero;
+
+    #endregion
+
+
 
     #region Serialized — Retraction
 
@@ -115,6 +142,9 @@ public class GrapplingHookController : MonoBehaviour
 
     #endregion
 
+
+
+
     #region Private — State
 
     private IPlayerContext _player;
@@ -160,6 +190,9 @@ public class GrapplingHookController : MonoBehaviour
     private void Update()
     {
         PerformAimRaycast();
+        PerformAimAssistRaycast();
+        UpdateImpactPointShower();
+        UpdateCurrentGrappledImpactPoint();
         HandleFireInput();
         CheckJumpRelease();
 
@@ -537,5 +570,166 @@ public class GrapplingHookController : MonoBehaviour
     }
 
     #endregion
+    #region Aim Raycast
 
+    // Datos públicos para el Visualizer — los raycast auxiliares
+    [System.NonSerialized] public AimAssistRay[] lastAimAssistRays = System.Array.Empty<AimAssistRay>();
+    [System.NonSerialized] public bool aimAssistOverrideActive;
+
+    public struct AimAssistRay
+    {
+        public Vector3 origin;
+        public Vector3 end;
+        public bool hitValid;  // true = hit con tag válida
+        public bool hitAny;    // true = hit algo (tag inválida)
+        public bool selected;  // true = éste es el elegido
+    }
+
+    private void PerformAimAssistRaycast()
+    {
+        Ray aimRay = new Ray(RayOrigin, RayDirection);
+
+        bool centralHit = Physics.Raycast(
+            aimRay,
+            out RaycastHit centralRayHit,
+            aimMaxDistance,
+            environmentLayers,
+            QueryTriggerInteraction.Ignore
+        );
+
+        if (centralHit)
+        {
+            _aimRaycastEndPoint = centralRayHit.point;
+            isAimingAtValidSurface = centralRayHit.collider.CompareTag(environmentTag);
+        }
+        else
+        {
+            _aimRaycastEndPoint = aimRay.origin + aimRay.direction * aimMaxDistance;
+            isAimingAtValidSurface = false;
+        }
+
+        // Si el central ya es válido, limpiamos los auxiliares y terminamos
+        if (isAimingAtValidSurface || !aimAssistEnabled)
+        {
+            lastAimAssistRays = System.Array.Empty<AimAssistRay>();
+            aimAssistOverrideActive = false;
+            return;
+        }
+
+        PerformAimAssistRaycasts(aimRay);
+    }
+
+    #endregion
+
+    #region Aim Assist
+
+    private void PerformAimAssistRaycasts(Ray centralRay)
+    {
+        // Construimos los ejes perpendiculares al rayo central
+        // para poder rotar alrededor de él en coordenadas de cámara
+        Vector3 forward = centralRay.direction.normalized;
+        Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+        if (right == Vector3.zero) right = Vector3.Cross(Vector3.forward, forward).normalized;
+        Vector3 up = Vector3.Cross(forward, right).normalized;
+
+        int totalRays = aimAssistRings * aimAssistRayCount;
+        var rays = new System.Collections.Generic.List<AimAssistRay>(totalRays);
+
+        float bestDist = float.MaxValue;
+        int bestIndex = -1;
+
+        for (int ring = 1; ring <= aimAssistRings; ring++)
+        {
+            float ringAngle = aimAssistAngle * ((float)ring / aimAssistRings);
+
+            for (int i = 0; i < aimAssistRayCount; i++)
+            {
+                float azimuth = (360f / aimAssistRayCount) * i * Mathf.Deg2Rad;
+
+                // Dirección rotada: combinamos right y up para obtener el
+                // offset en el plano perpendicular a la cámara, luego
+                // la inclinamos 'ringAngle' grados desde el eje forward
+                Vector3 offset = (right * Mathf.Cos(azimuth) + up * Mathf.Sin(azimuth)).normalized;
+                Vector3 dir = (forward + Mathf.Tan(ringAngle * Mathf.Deg2Rad) * offset).normalized;
+
+                Ray assistRay = new Ray(centralRay.origin, dir);
+
+                var entry = new AimAssistRay { origin = centralRay.origin };
+
+                bool hit = Physics.Raycast(
+                    assistRay,
+                    out RaycastHit hitInfo,
+                    aimMaxDistance,
+                    environmentLayers,
+                    QueryTriggerInteraction.Ignore
+                );
+
+                if (hit)
+                {
+                    entry.end = hitInfo.point;
+                    entry.hitAny = true;
+                    entry.hitValid = hitInfo.collider.CompareTag(environmentTag);
+
+                    if (entry.hitValid && hitInfo.distance < bestDist)
+                    {
+                        bestDist = hitInfo.distance;
+                        bestIndex = rays.Count;
+                    }
+                }
+                else
+                {
+                    entry.end = centralRay.origin + dir * aimMaxDistance;
+                }
+
+                rays.Add(entry);
+            }
+        }
+
+        // Marcar el ganador y aplicar override si hay alguno válido
+        if (bestIndex >= 0)
+        {
+            var winner = rays[bestIndex];
+            winner.selected = true;
+            rays[bestIndex] = winner;
+
+            _aimRaycastEndPoint = winner.end;
+            isAimingAtValidSurface = true;
+            aimAssistOverrideActive = true;
+        }
+        else
+        {
+            aimAssistOverrideActive = false;
+        }
+
+        lastAimAssistRays = rays.ToArray();
+    }
+
+    #endregion
+    #region GrapplingHookImpactPointShower
+
+    private void UpdateImpactPointShower()
+    {
+        if (impactPointObject == null)
+            return;
+
+        bool shouldShow = showImpactPoint && isAimingAtValidSurface;
+
+        impactPointObject.SetActive(shouldShow);
+
+        if (shouldShow)
+            impactPointObject.transform.position = _aimRaycastEndPoint + impactPointOffset;
+    }
+    private void UpdateCurrentGrappledImpactPoint()
+    {
+        if (currentGrappledImpactPointObject == null)
+            return;
+
+        bool shouldShow = showCurrentGrappledImpactPoint && hookIsActive;
+
+        currentGrappledImpactPointObject.SetActive(shouldShow);
+
+        if (shouldShow)
+            currentGrappledImpactPointObject.transform.position = hookImpactPoint + currentGrappledImpactPointOffset;
+    }
+    #endregion
 }
