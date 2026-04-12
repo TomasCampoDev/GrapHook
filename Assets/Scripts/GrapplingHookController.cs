@@ -449,6 +449,11 @@ public class GrapplingHookController : MonoBehaviour
         _player.SetReceivedInertia(amplifiedInertia);
         Debug.Log($"[GrapplingHook] Released — inertia: {amplifiedInertia} (mag: {amplifiedInertia.magnitude:F2})");
     }
+    public void ReleaseHookWithInertia()
+    {
+        if (hookIsActive)
+            ReleaseHook();
+    }
 
     #endregion
 

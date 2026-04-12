@@ -112,6 +112,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     private float _verticalVelocity;
     private bool _isAiming;
+    public bool _shouldAlwaysAim;
     private bool _isOnLedge;
     private bool _isLerpingToLedge;
     private bool _isHookActive;
@@ -468,8 +469,14 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     private void ReadAimInput()
     {
-        _isAiming = Input.GetMouseButton(1);
-
+        if (!_shouldAlwaysAim)
+        {
+            _isAiming = Input.GetMouseButton(1);
+        }
+        else
+        {
+            _isAiming = true;
+        }
         if (_input.shoulderSwapInput)
             shoulderOffset = -shoulderOffset;
     }
@@ -483,18 +490,37 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         _cameraPitch = Mathf.Clamp(_cameraPitch, minPitch, maxPitch);
     }
 
+    [Header("Shoulder Swap Compensation")]
+    [Tooltip("Multiplica la compensación calculada si quieres ajustar fino (1 = exacto en teoría).")]
+    [SerializeField] private float shoulderSwapCompensationMultiplier = 1f;
+
     private void UpdateAimTransition()
     {
         float targetDistance = _isAiming ? aimCameraDistance : cameraDistance;
         float targetShoulder = _isAiming ? shoulderOffset : 0f;
         float targetHeight = _isAiming ? aimHeightOffset : cameraHeightOffset;
-
         float t = Time.deltaTime * aimTransitionSpeed;
-        _currentCameraDistance = Mathf.Lerp(_currentCameraDistance, targetDistance, t);
-        _currentShoulderOffset = Mathf.Lerp(_currentShoulderOffset, targetShoulder, t);
-        _currentHeightOffset = Mathf.Lerp(_currentHeightOffset, targetHeight, t);
-    }
 
+        _currentCameraDistance = Mathf.Lerp(_currentCameraDistance, targetDistance, t);
+        _currentHeightOffset = Mathf.Lerp(_currentHeightOffset, targetHeight, t);
+
+        // ?? Shoulder swap: compensación en _cameraYaw ??????????????????
+        float newShoulderOffset = Mathf.Lerp(_currentShoulderOffset, targetShoulder, t);
+        float shoulderDelta = newShoulderOffset - _currentShoulderOffset;
+
+        if (Mathf.Abs(shoulderDelta) > 0.0001f)
+        {
+            float distanceForCompensation = Mathf.Max(_currentCameraDistance, 0.1f);
+            float compensationDeg = Mathf.Atan2(shoulderDelta, distanceForCompensation)
+                                    * Mathf.Rad2Deg
+                                    * shoulderSwapCompensationMultiplier;
+
+            // Sumamos al yaw de la cámara, NO rotamos el transform del personaje
+            _cameraYaw += compensationDeg;
+        }
+
+        _currentShoulderOffset = newShoulderOffset;
+    }
     private void UpdateCameraPosition()
     {
         if (mainCamera == null)
