@@ -10,6 +10,8 @@ public class PlayerAnimatorBridge : MonoBehaviour
     #region Constants — Parameter Names
 
     private const string PARAM_MOVE_AMOUNT = "moveAmount";
+    private const string PARAM_MOVE_AMOUNT_X = "MoveAmountX";
+    private const string PARAM_MOVE_AMOUNT_Z = "MoveAmountZ";
     private const string PARAM_GROUNDED = "Grounded";
     private const string PARAM_FREE_FALL = "FreeFall";
     private const string PARAM_JUMP = "Jump";
@@ -21,6 +23,8 @@ public class PlayerAnimatorBridge : MonoBehaviour
     private const string PARAM_LOOKING_BACK_SIDE = "LookingBackSide";
     private const string PARAM_CLIMB_LEDGE = "ClimbLedge";
 
+    private const string LAYER_AIMING_GUN = "AimingGun";
+
     #endregion
 
     #region References
@@ -29,11 +33,50 @@ public class PlayerAnimatorBridge : MonoBehaviour
 
     #endregion
 
+    #region Private State — Layer Weight
+
+    private int _aimingGunLayerIndex = -1;
+    private float _targetAimingGunWeight;
+    private float _aimingGunBlendSpeed = 5f;
+
+    #endregion
+
     #region Unity Lifecycle
 
     private void Awake()
     {
         _animator = GetComponent<Animator>();
+        _aimingGunLayerIndex = _animator.GetLayerIndex(LAYER_AIMING_GUN);
+    }
+
+    private void Update()
+    {
+        UpdateAimingGunLayerWeight();
+    }
+
+    #endregion
+
+    #region Layer Weight
+
+    /// <summary>
+    /// Establece el peso objetivo de la layer AimingGun.
+    /// Llama con 1f al equipar un arma, con 0f al desequipar.
+    /// </summary>
+    public void SetAimingGunLayerActive(bool active, float blendSpeed = 5f, float maxWeight = 1f)
+    {
+        _targetAimingGunWeight = active ? Mathf.Clamp01(maxWeight) : 0f;
+        _aimingGunBlendSpeed = blendSpeed;
+    }
+
+    private void UpdateAimingGunLayerWeight()
+    {
+        if (_aimingGunLayerIndex < 0) return;
+
+        float current = _animator.GetLayerWeight(_aimingGunLayerIndex);
+        if (Mathf.Approximately(current, _targetAimingGunWeight)) return;
+
+        float next = Mathf.Lerp(current, _targetAimingGunWeight, Time.deltaTime * _aimingGunBlendSpeed);
+        _animator.SetLayerWeight(_aimingGunLayerIndex, next);
     }
 
     #endregion
@@ -41,6 +84,8 @@ public class PlayerAnimatorBridge : MonoBehaviour
     #region Movement Parameters
 
     public void SetMoveAmount(float amount) => _animator.SetFloat(PARAM_MOVE_AMOUNT, amount);
+    public void SetMoveAmountX(float amount) => _animator.SetFloat(PARAM_MOVE_AMOUNT_X, amount);
+    public void SetMoveAmountZ(float amount) => _animator.SetFloat(PARAM_MOVE_AMOUNT_Z, amount);
     public void SetGrounded(bool grounded) => _animator.SetBool(PARAM_GROUNDED, grounded);
     public void SetFreeFall(bool freeFall) => _animator.SetBool(PARAM_FREE_FALL, freeFall);
 
@@ -75,12 +120,10 @@ public class PlayerAnimatorBridge : MonoBehaviour
 
     #endregion
 
-    #region Accessors — para módulos que necesitan leer estado del Animator
+    #region Accessors
 
     public bool GetBool(string paramName) => _animator.GetBool(paramName);
     public float GetFloat(string paramName) => _animator.GetFloat(paramName);
-
-    /// Acceso directo al Animator para casos excepcionales (ej: GetBoneTransform).
     public Animator Raw => _animator;
 
     #endregion
