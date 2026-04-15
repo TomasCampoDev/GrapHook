@@ -22,13 +22,19 @@ public class PlayerAnimatorBridge : MonoBehaviour
     private const string PARAM_LOOKING_BACK = "LookingBackOnLedge";
     private const string PARAM_LOOKING_BACK_SIDE = "LookingBackSide";
     private const string PARAM_CLIMB_LEDGE = "ClimbLedge";
+    private const string PARAM_IS_AIMING = "isAiming";
+
 
     private const string LAYER_AIMING_GUN = "AimingGun";
+    private const string LAYER_AIMING_GUN_ARMS = "AimingGunArms";
+
 
     #endregion
 
     #region References
-
+    [Header("Rigs")]
+    [SerializeField] private UnityEngine.Animations.Rigging.Rig spineRig;
+    [SerializeField] private UnityEngine.Animations.Rigging.Rig handRig;
     private Animator _animator;
 
     #endregion
@@ -36,8 +42,13 @@ public class PlayerAnimatorBridge : MonoBehaviour
     #region Private State — Layer Weight
 
     private int _aimingGunLayerIndex = -1;
+    private int _aimingGunArmsLayerIndex = -1;   // <-- nuevo
+
     private float _targetAimingGunWeight;
+    private float _targetAimingGunArmsWeight;    // <-- nuevo
+
     private float _aimingGunBlendSpeed = 5f;
+    private float _aimingGunArmsBlendSpeed = 5f; // <-- nuevo
 
     #endregion
 
@@ -47,11 +58,13 @@ public class PlayerAnimatorBridge : MonoBehaviour
     {
         _animator = GetComponent<Animator>();
         _aimingGunLayerIndex = _animator.GetLayerIndex(LAYER_AIMING_GUN);
+        _aimingGunArmsLayerIndex = _animator.GetLayerIndex(LAYER_AIMING_GUN_ARMS);
     }
 
     private void Update()
     {
         UpdateAimingGunLayerWeight();
+        UpdateAimingGunArmsLayerWeight();
     }
 
     #endregion
@@ -67,16 +80,32 @@ public class PlayerAnimatorBridge : MonoBehaviour
         _targetAimingGunWeight = active ? Mathf.Clamp01(maxWeight) : 0f;
         _aimingGunBlendSpeed = blendSpeed;
     }
+    public void SetAimingGunArmsLayerActive(bool active, float blendSpeed = 5f, float maxWeight = 1f)
+    {
+        _targetAimingGunArmsWeight = active ? Mathf.Clamp01(maxWeight) : 0f;
+        _aimingGunArmsBlendSpeed = blendSpeed;
+    }
 
     private void UpdateAimingGunLayerWeight()
     {
         if (_aimingGunLayerIndex < 0) return;
-
         float current = _animator.GetLayerWeight(_aimingGunLayerIndex);
         if (Mathf.Approximately(current, _targetAimingGunWeight)) return;
+        _animator.SetLayerWeight(
+            _aimingGunLayerIndex,
+            Mathf.Lerp(current, _targetAimingGunWeight, Time.deltaTime * _aimingGunBlendSpeed)
+        );
+    }
 
-        float next = Mathf.Lerp(current, _targetAimingGunWeight, Time.deltaTime * _aimingGunBlendSpeed);
-        _animator.SetLayerWeight(_aimingGunLayerIndex, next);
+    private void UpdateAimingGunArmsLayerWeight()
+    {
+        if (_aimingGunArmsLayerIndex < 0) return;
+        float current = _animator.GetLayerWeight(_aimingGunArmsLayerIndex);
+        if (Mathf.Approximately(current, _targetAimingGunArmsWeight)) return;
+        _animator.SetLayerWeight(
+            _aimingGunArmsLayerIndex,
+            Mathf.Lerp(current, _targetAimingGunArmsWeight, Time.deltaTime * _aimingGunArmsBlendSpeed)
+        );
     }
 
     #endregion
@@ -106,6 +135,8 @@ public class PlayerAnimatorBridge : MonoBehaviour
     public void SetLookingBack(bool lookingBack) => _animator.SetBool(PARAM_LOOKING_BACK, lookingBack);
     public void SetLookingBackSide(float side) => _animator.SetFloat(PARAM_LOOKING_BACK_SIDE, side);
     public void SetClimbLedge(bool climbing) => _animator.SetBool(PARAM_CLIMB_LEDGE, climbing);
+    public void SetIsAiming(bool aiming) => _animator.SetBool(PARAM_IS_AIMING, aiming);
+
 
     public void ResetLedgeAnimations()
     {
@@ -125,6 +156,10 @@ public class PlayerAnimatorBridge : MonoBehaviour
     public bool GetBool(string paramName) => _animator.GetBool(paramName);
     public float GetFloat(string paramName) => _animator.GetFloat(paramName);
     public Animator Raw => _animator;
-
+    public void SetRigWeights(float weight)
+    {
+        if (spineRig != null) spineRig.weight = weight;
+        if (handRig != null) handRig.weight = weight;
+    }
     #endregion
 }

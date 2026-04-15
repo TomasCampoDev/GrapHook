@@ -1,10 +1,10 @@
-using System.Collections;
+Ôªøusing System.Collections;
 using UnityEngine;
 
 /// <summary>
 /// Orquestador principal del personaje.
-/// Responsabilidades: movimiento en suelo, rotaciÛn, c·mara de hombro y estado compartido (IPlayerContext).
-/// La fÌsica/salto vive en PlayerPhysicsController.
+/// Responsabilidades: movimiento en suelo, rotaci√≥n, c√°mara de hombro y estado compartido (IPlayerContext).
+/// La f√≠sica/salto vive en PlayerPhysicsController.
 /// El ledge vive en LedgeGrabController.
 /// El grappling hook vive en GrapplingHookController.
 /// </summary>
@@ -12,14 +12,14 @@ using UnityEngine;
 [RequireComponent(typeof(PlayerAnimatorBridge))]
 public class PlayerController : MonoBehaviour, IPlayerContext
 {
-    #region Serialized ó Character
+    #region Serialized ‚Äî Character
 
     [Header("Character Identity")]
     [SerializeField] private string characterName;
 
     #endregion
 
-    #region Serialized ó Movement
+    #region Serialized ‚Äî Movement
 
     [Header("Movement")]
     [SerializeField] private float baseMoveSpeed = 6f;
@@ -29,9 +29,9 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     #endregion
 
-    #region Serialized ó Camera Base
+    #region Serialized ‚Äî Camera Base
 
-    [Header("Camera ó Base")]
+    [Header("Camera ‚Äî Base")]
     [SerializeField] private Camera mainCamera;
     [SerializeField] private float cameraSensitivity = 100f;
     [SerializeField] private float cameraFollowSpeed = 7f;
@@ -43,24 +43,24 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     #endregion
 
-    #region Serialized ó Camera Shoulder
+    #region Serialized ‚Äî Camera Shoulder
 
-    [Header("Camera ó Shoulder")]
+    [Header("Camera ‚Äî Shoulder")]
     [Tooltip("Offset lateral del hombro activo. Positivo = derecha, negativo = izquierda.")]
     [SerializeField] private float shoulderOffset = 0.6f;
 
     #endregion
 
-    #region Serialized ó Camera Aim
+    #region Serialized ‚Äî Camera Aim
 
-    [Header("Camera ó Aim")]
+    [Header("Camera ‚Äî Aim")]
     [SerializeField] private float aimCameraDistance = 2.5f;
     [SerializeField] private float aimHeightOffset = 1.8f;
     [SerializeField] private float aimTransitionSpeed = 8f;
 
     #endregion
 
-    #region Serialized ó Ground Check
+    #region Serialized ‚Äî Ground Check
 
     [Header("Ground Check")]
     [SerializeField] private float groundedRadius = 0.2f;
@@ -70,14 +70,14 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     #endregion
 
-    #region Serialized ó Dissolve
+    #region Serialized ‚Äî Dissolve
 
     [Header("Dissolve")]
     public float dissolveDuration = 0.5f;
 
     #endregion
 
-    #region Private ó Components
+    #region Private ‚Äî Components
 
     private CharacterController _characterController;
     private PlayerAnimatorBridge _animatorBridge;
@@ -86,7 +86,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     #endregion
 
-    #region Private ó Movement State
+    #region Private ‚Äî Movement State
 
     private float _currentSpeed;
     private float _movementAnimBlend;
@@ -98,7 +98,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     #endregion
 
-    #region Private ó Camera State
+    #region Private ‚Äî Camera State
 
     private float _cameraPitch;
     private float _cameraYaw;
@@ -108,7 +108,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     #endregion
 
-    #region Private ó Shared State
+    #region Private ‚Äî Shared State
 
     private float _verticalVelocity;
     private bool _isAiming;
@@ -123,16 +123,16 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     #endregion
 
-    #region Serialized ó Swing Input Suppression Recovery
+    #region Serialized ‚Äî Swing Input Suppression Recovery
 
-    [Header("Swing Input Suppression ó Recovery")]
+    [Header("Swing Input Suppression ‚Äî Recovery")]
     [SerializeField] private bool recoverSuppressionOnGrounded = true;
     [SerializeField] private bool recoverSuppressionAfterTimeout = true;
     [SerializeField] private float suppressionTimeoutDuration = 0.5f;
 
     #endregion
 
-    #region Private ó Swing Input Suppression
+    #region Private ‚Äî Swing Input Suppression
 
     private Vector2 _suppressedSwingInput;
     private bool _suppressSwingDown;
@@ -490,9 +490,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
         _cameraPitch = Mathf.Clamp(_cameraPitch, minPitch, maxPitch);
     }
 
-    [Header("Shoulder Swap Compensation")]
-    [Tooltip("Multiplica la compensaciÛn calculada si quieres ajustar fino (1 = exacto en teorÌa).")]
-    [SerializeField] private float shoulderSwapCompensationMultiplier = 1f;
+
 
     private void UpdateAimTransition()
     {
@@ -503,43 +501,24 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
         _currentCameraDistance = Mathf.Lerp(_currentCameraDistance, targetDistance, t);
         _currentHeightOffset = Mathf.Lerp(_currentHeightOffset, targetHeight, t);
-
-        // ?? Shoulder swap: compensaciÛn en _cameraYaw ??????????????????
-        float newShoulderOffset = Mathf.Lerp(_currentShoulderOffset, targetShoulder, t);
-        float shoulderDelta = newShoulderOffset - _currentShoulderOffset;
-
-        if (Mathf.Abs(shoulderDelta) > 0.0001f)
-        {
-            float distanceForCompensation = Mathf.Max(_currentCameraDistance, 0.1f);
-            float compensationDeg = Mathf.Atan2(shoulderDelta, distanceForCompensation)
-                                    * Mathf.Rad2Deg
-                                    * shoulderSwapCompensationMultiplier;
-
-            // Sumamos al yaw de la c·mara, NO rotamos el transform del personaje
-            _cameraYaw += compensationDeg;
-        }
-
-        _currentShoulderOffset = newShoulderOffset;
+        _currentShoulderOffset = Mathf.Lerp(_currentShoulderOffset, targetShoulder, t);
+        // Ya no hay compensaci√≥n de yaw. No hace falta.
     }
     private void UpdateCameraPosition()
     {
-        if (mainCamera == null)
-        {
-            Debug.LogError("[PlayerController] mainCamera is null. Destroying player.", this);
-            Destroy(gameObject);
-            return;
-        }
+        if (mainCamera == null) { Destroy(gameObject); return; }
 
         Quaternion cameraRotation = Quaternion.Euler(_cameraPitch, _cameraYaw, 0f);
         Vector3 cameraRight = cameraRotation * Vector3.right;
         Vector3 cameraForward = cameraRotation * Vector3.forward;
 
-        Vector3 characterCenter = transform.position + Vector3.up * _currentHeightOffset;
-        Vector3 lookTarget = characterCenter + cameraRight * (_currentShoulderOffset * 0.35f);
-
-        Vector3 desiredPos = characterCenter
-                           - cameraForward * _currentCameraDistance
+        // El pivote de la √≥rbita es el personaje desplazado lateralmente
+        Vector3 orbitPivot = transform.position
+                           + Vector3.up * _currentHeightOffset
                            + cameraRight * _currentShoulderOffset;
+
+        // La c√°mara orbita alrededor del pivote, no alrededor del personaje
+        Vector3 desiredPos = orbitPivot - cameraForward * _currentCameraDistance;
 
         mainCamera.transform.position = Vector3.Lerp(
             mainCamera.transform.position,
@@ -547,8 +526,9 @@ public class PlayerController : MonoBehaviour, IPlayerContext
             Time.deltaTime * cameraFollowSpeed
         );
 
+        // Miramos siempre al pivote ‚Üí la rotaci√≥n es coherente con la √≥rbita
         mainCamera.transform.rotation = Quaternion.LookRotation(
-            lookTarget - mainCamera.transform.position
+            orbitPivot - mainCamera.transform.position
         );
     }
 
@@ -564,7 +544,7 @@ public class PlayerController : MonoBehaviour, IPlayerContext
 
     #endregion
 
-    #region IPlayerContext ó Implementation
+    #region IPlayerContext ‚Äî Implementation
 
     public Transform PlayerTransform => transform;
     public CharacterController CharacterController => _characterController;

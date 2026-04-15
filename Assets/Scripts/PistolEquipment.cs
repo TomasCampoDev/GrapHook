@@ -8,13 +8,14 @@ public class PistolEquipment : MonoBehaviour, IEquipment
     [SerializeField] private GameObject HandPistolMesh;
     [SerializeField] private GameObject BackPistolMesh;
 
-
-
     [Header("Aim Rotation")]
     [SerializeField] private float aimRotationSpeed = 10f;
 
     [Header("Strafe Animation")]
     [SerializeField] private float strafeAnimationBlendRate = 10f;
+
+    [Header("Rig")]
+    [SerializeField] private float rigBlendRate = 8f;
 
     #endregion
 
@@ -23,15 +24,16 @@ public class PistolEquipment : MonoBehaviour, IEquipment
     private bool _isEquipped;
     private PlayerController _player;
     private PlayerAnimatorBridge _playerAnimatorBridge;
-
     private float _currentStrafeX;
     private float _currentStrafeZ;
+    private float _currentRigWeight;
 
     #endregion
 
     #region IEquipment
 
     public string DisplayName => "Pistola";
+
     public void Start()
     {
         _player = GetComponentInParent<PlayerController>();
@@ -41,25 +43,24 @@ public class PistolEquipment : MonoBehaviour, IEquipment
     public void OnEquip()
     {
         _isEquipped = true;
-
-
-        _playerAnimatorBridge?.SetAimingGunLayerActive(true);
-
         HandPistolMesh.SetActive(true);
         BackPistolMesh.SetActive(false);
-
+        _playerAnimatorBridge?.SetAimingGunArmsLayerActive(true);
+        // Los rigs arrancan en 0; el Update los subirá si apuntamos
     }
 
     public void OnUnequip()
     {
         _isEquipped = false;
-
         ResetStrafeAnimation();
-        _playerAnimatorBridge?.SetAimingGunLayerActive(false);
-
+        _player?.SetRotationBlocked(false);
+        _playerAnimatorBridge?.SetIsAiming(false);
+        _playerAnimatorBridge?.SetAimingGunLayerActive(false);     
+        _playerAnimatorBridge?.SetAimingGunArmsLayerActive(false); 
+        _currentRigWeight = 0f;
+        _playerAnimatorBridge?.SetRigWeights(0f);
         HandPistolMesh.SetActive(false);
         BackPistolMesh.SetActive(true);
-
     }
 
     #endregion
@@ -68,30 +69,36 @@ public class PistolEquipment : MonoBehaviour, IEquipment
 
     public void Update()
     {
-        if (_isEquipped)
+        HandleCornerCases();
+        if (!_isEquipped) return;
+
+        bool isAiming = _player.IsAiming;
+
+        // AimingGun solo cuando apuntamos
+        if (!_player.IsOnLedge)
         {
-            if (_player.IsAiming)
+
+            _playerAnimatorBridge?.SetAimingGunArmsLayerActive(true);
+            _playerAnimatorBridge?.SetAimingGunLayerActive(isAiming);
+            _playerAnimatorBridge?.SetIsAiming(isAiming);
+
+            // Rigs solo cuando apuntamos
+            float targetRigWeight = isAiming ? 1f : 0f;
+            _currentRigWeight = Mathf.Lerp(_currentRigWeight, targetRigWeight, Time.deltaTime * rigBlendRate);
+            _playerAnimatorBridge?.SetRigWeights(_currentRigWeight);
+
+            if (isAiming)
             {
                 HandleAimRotation();
                 HandleStrafeAnimation();
-                _playerAnimatorBridge?.SetAimingGunLayerActive(true);
-
             }
             else
             {
-                //ResetStrafeAnimation();
+                ResetStrafeAnimation();
                 _player.SetRotationBlocked(false);
-
-                _playerAnimatorBridge?.SetAimingGunLayerActive(false);
             }
         }
-        else
-        {
 
-            _player.SetRotationBlocked(false);
-
-            // Limpieza adicional si fuera necesaria
-        }
     }
 
     #endregion
@@ -100,18 +107,13 @@ public class PistolEquipment : MonoBehaviour, IEquipment
 
     private void HandleAimRotation()
     {
-        if (_player == null || !_player.IsAiming) return;
-
         Vector3 camForward = _player.MainCamera.transform.forward;
         camForward.y = 0f;
-
         if (camForward.sqrMagnitude < 0.001f) return;
-
-        Quaternion targetRotation = Quaternion.LookRotation(camForward.normalized);
 
         _player.transform.rotation = Quaternion.Lerp(
             _player.transform.rotation,
-            targetRotation,
+            Quaternion.LookRotation(camForward.normalized),
             Time.deltaTime * aimRotationSpeed
         );
     }
@@ -122,20 +124,10 @@ public class PistolEquipment : MonoBehaviour, IEquipment
 
     private void HandleStrafeAnimation()
     {
-        if (_player == null || _playerAnimatorBridge == null) return;
-
-        if (!_player.IsAiming)
-        {
-            ResetStrafeAnimation();
-            _player.SetRotationBlocked(false);
-            return;
-        }
-
         _player.SetRotationBlocked(true);
         _playerAnimatorBridge.SetMoveAmount(0f);
 
-        Vector2 rawInput = GetMovementInput();
-
+        Vector2 rawInput = InputManager.Instance.movementInput;
         float t = Time.deltaTime * strafeAnimationBlendRate;
         _currentStrafeX = Mathf.Lerp(_currentStrafeX, rawInput.x, t);
         _currentStrafeZ = Mathf.Lerp(_currentStrafeZ, rawInput.y, t);
@@ -148,15 +140,28 @@ public class PistolEquipment : MonoBehaviour, IEquipment
     {
         _currentStrafeX = 0f;
         _currentStrafeZ = 0f;
-
-        if (_playerAnimatorBridge == null) return;
-
-        _playerAnimatorBridge.SetMoveAmountX(0f);
-        _playerAnimatorBridge.SetMoveAmountZ(0f);
+        _playerAnimatorBridge?.SetMoveAmountX(0f);
+        _playerAnimatorBridge?.SetMoveAmountZ(0f);
     }
 
-    // Accedemos al input a través del InputManager para no acoplar a PlayerController
-    private Vector2 GetMovementInput() => InputManager.Instance.movementInput;
+    #endregion
+    #region Corner Cases
+    private void HandleCornerCases()
+    {
+        if (_player.IsOnLedge)
+        {
+            ResetStrafeAnimation();
+            _player?.SetRotationBlocked(false);
+            _playerAnimatorBridge?.SetIsAiming(false);
+            _playerAnimatorBridge?.SetAimingGunLayerActive(false);
+            _playerAnimatorBridge?.SetAimingGunArmsLayerActive(false);
+            _currentRigWeight = 0f;
+            _playerAnimatorBridge?.SetRigWeights(0f);
+
+        }
+    }
+
 
     #endregion
+
 }
