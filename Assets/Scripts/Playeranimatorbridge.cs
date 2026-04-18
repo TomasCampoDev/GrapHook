@@ -23,6 +23,8 @@ public class PlayerAnimatorBridge : MonoBehaviour
     private const string PARAM_LOOKING_BACK_SIDE = "LookingBackSide";
     private const string PARAM_CLIMB_LEDGE = "ClimbLedge";
     private const string PARAM_IS_AIMING = "isAiming";
+    private const string PARAM_RECOIL_NOISE = "RecoilNoise";
+
 
 
     private const string LAYER_AIMING_GUN = "AimingGun";
@@ -117,6 +119,8 @@ public class PlayerAnimatorBridge : MonoBehaviour
     public void SetMoveAmountZ(float amount) => _animator.SetFloat(PARAM_MOVE_AMOUNT_Z, amount);
     public void SetGrounded(bool grounded) => _animator.SetBool(PARAM_GROUNDED, grounded);
     public void SetFreeFall(bool freeFall) => _animator.SetBool(PARAM_FREE_FALL, freeFall);
+    public void SetRecoilNoise(float amount) => _animator.SetFloat(PARAM_RECOIL_NOISE, amount);
+
 
     #endregion
 

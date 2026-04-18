@@ -17,6 +17,12 @@ public class PistolEquipment : MonoBehaviour, IEquipment
     [Header("Rig")]
     [SerializeField] private float rigBlendRate = 8f;
 
+    [Header("Shooting")]
+    [SerializeField] private float raycastLength = 50f;
+    [SerializeField] private float recoilRiseSpeed = 15f;
+    [SerializeField] private float recoilFallSpeed = 8f;
+    [SerializeField] private float recoilFireThreshold = 0.2f;
+
     #endregion
 
     #region Private State
@@ -27,6 +33,8 @@ public class PistolEquipment : MonoBehaviour, IEquipment
     private float _currentStrafeX;
     private float _currentStrafeZ;
     private float _currentRigWeight;
+    private float _recoilNoise;
+    private bool _isFiring;
 
     #endregion
 
@@ -46,7 +54,6 @@ public class PistolEquipment : MonoBehaviour, IEquipment
         HandPistolMesh.SetActive(true);
         BackPistolMesh.SetActive(false);
         _playerAnimatorBridge?.SetAimingGunArmsLayerActive(true);
-        // Los rigs arrancan en 0; el Update los subirá si apuntamos
     }
 
     public void OnUnequip()
@@ -55,9 +62,11 @@ public class PistolEquipment : MonoBehaviour, IEquipment
         ResetStrafeAnimation();
         _player?.SetRotationBlocked(false);
         _playerAnimatorBridge?.SetIsAiming(false);
-        _playerAnimatorBridge?.SetAimingGunLayerActive(false);     
-        _playerAnimatorBridge?.SetAimingGunArmsLayerActive(false); 
+        _playerAnimatorBridge?.SetAimingGunLayerActive(false);
+        _playerAnimatorBridge?.SetAimingGunArmsLayerActive(false);
         _currentRigWeight = 0f;
+        _recoilNoise = 0f;
+        _isFiring = false;
         _playerAnimatorBridge?.SetRigWeights(0f);
         HandPistolMesh.SetActive(false);
         BackPistolMesh.SetActive(true);
@@ -74,15 +83,12 @@ public class PistolEquipment : MonoBehaviour, IEquipment
 
         bool isAiming = _player.IsAiming;
 
-        // AimingGun solo cuando apuntamos
         if (!_player.IsOnLedge)
         {
-
             _playerAnimatorBridge?.SetAimingGunArmsLayerActive(true);
             _playerAnimatorBridge?.SetAimingGunLayerActive(isAiming);
             _playerAnimatorBridge?.SetIsAiming(isAiming);
 
-            // Rigs solo cuando apuntamos
             float targetRigWeight = isAiming ? 1f : 0f;
             _currentRigWeight = Mathf.Lerp(_currentRigWeight, targetRigWeight, Time.deltaTime * rigBlendRate);
             _playerAnimatorBridge?.SetRigWeights(_currentRigWeight);
@@ -91,6 +97,7 @@ public class PistolEquipment : MonoBehaviour, IEquipment
             {
                 HandleAimRotation();
                 HandleStrafeAnimation();
+                HandleShooting();
             }
             else
             {
@@ -99,6 +106,51 @@ public class PistolEquipment : MonoBehaviour, IEquipment
             }
         }
 
+        UpdateRecoil();
+    }
+
+    #endregion
+
+    #region Shooting
+
+    private bool CanFire => _recoilNoise <= recoilFireThreshold;
+
+    private void HandleShooting()
+    {
+        DrawDebugRaycast();
+
+        if (Input.GetMouseButtonDown(0) && CanFire)
+        {
+            Fire();
+        }
+    }
+
+    private void Fire()
+    {
+        _isFiring = true;
+    }
+
+    private void UpdateRecoil()
+    {
+        if (_isFiring)
+        {
+            _recoilNoise = Mathf.MoveTowards(_recoilNoise, 1f, Time.deltaTime * recoilRiseSpeed);
+            if (_recoilNoise >= 1f)
+                _isFiring = false;
+        }
+        else
+        {
+            _recoilNoise = Mathf.MoveTowards(_recoilNoise, 0f, Time.deltaTime * recoilFallSpeed);
+        }
+
+        _playerAnimatorBridge?.SetRecoilNoise(_recoilNoise);
+    }
+
+    private void DrawDebugRaycast()
+    {
+        Transform cam = _player.MainCamera.transform;
+        Color rayColor = CanFire ? Color.green : Color.red;
+        Debug.DrawRay(cam.position, cam.forward * raycastLength, rayColor);
     }
 
     #endregion
@@ -145,7 +197,9 @@ public class PistolEquipment : MonoBehaviour, IEquipment
     }
 
     #endregion
+
     #region Corner Cases
+
     private void HandleCornerCases()
     {
         if (_player.IsOnLedge)
@@ -157,11 +211,8 @@ public class PistolEquipment : MonoBehaviour, IEquipment
             _playerAnimatorBridge?.SetAimingGunArmsLayerActive(false);
             _currentRigWeight = 0f;
             _playerAnimatorBridge?.SetRigWeights(0f);
-
         }
     }
 
-
     #endregion
-
 }
